@@ -81,22 +81,11 @@ class Model(object):
             )
             return policy_loss, value_loss, policy_entropy
 
-        def save(save_path):
-            ps = sess.run(params)
-            joblib.dump(ps, save_path)
-
-        def load(load_path):
-            loaded_params = joblib.load(load_path)
-            restores = []
-            for p, loaded_p in zip(params, loaded_params):
-                restores.append(p.assign(loaded_p))
-            sess.run(restores)
-
-
+        def save(saver, save_path):
+            saver.save(sess, save_path)
 
         self.train = train
         self.save = save
-        self.load = load
         self.train_model = train_model
         self.step_model = step_model
         self.step = step_model.step
@@ -168,7 +157,7 @@ class Runner(object):
 
 def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval=1, nprocs=32, nsteps=20,
                  nstack=4, ent_coef=0.01, vf_coef=0.5, vf_fisher_coef=1.0, lr=0.25, max_grad_norm=0.5,
-                 kfac_clip=0.001, save_interval=None, lrschedule='linear'):
+                 kfac_clip=0.001, save_interval=100, load_path=None, lrschedule='linear'):
     tf.reset_default_graph()
     set_global_seeds(seed)
 
@@ -189,6 +178,15 @@ def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval
     nbatch = nenvs*nsteps
     tstart = time.time()
     enqueue_threads = model.q_runner.create_threads(model.sess, coord=tf.train.Coordinator(), start=True)
+
+    # Load model if necessary
+    if load_path != None:
+        saver = tf.train.Saver()
+        saver.restore(model.sess, os.path.join(load_path, "model.ckpt"))
+        print ("Loaded Model")
+    elif save_interval:
+        saver = tf.train.Saver()
+
     for update in range(1, total_timesteps//nbatch+1):
         obs, states, rewards, masks, actions, values = runner.run()
         policy_loss, value_loss, policy_entropy = model.train(obs, states, rewards, masks, actions, values)
@@ -207,8 +205,8 @@ def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval
             logger.dump_tabular()
 
         if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir():
-            savepath = osp.join(logger.get_dir(), 'checkpoint%.5i'%update)
+            savepath = osp.join(logger.get_dir(), "model.ckpt")
             print('Saving to', savepath)
-            model.save(savepath)
+            model.save(saver, savepath)
 
     env.close()

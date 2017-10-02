@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+import os, sys, shutil, argparse
+sys.path.append(os.getcwd())
+
 import os, logging, gym
 from baselines import logger
 from baselines.common import set_global_seeds
@@ -8,8 +11,8 @@ from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
 from baselines.common.atari_wrappers import wrap_deepmind
 from baselines.acktr.policies import CnnPolicy
 
-def train(env_id, num_frames, seed, num_cpu):
-    num_timesteps = int(num_frames / 4 * 1.1) 
+def train(env_id, num_frames, seed, load_path, num_cpu):
+    num_timesteps = int(num_frames // 4)
     def make_env(rank):
         def _thunk():
             env = gym.make(env_id)
@@ -22,7 +25,7 @@ def train(env_id, num_frames, seed, num_cpu):
     set_global_seeds(seed)
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
     policy_fn = CnnPolicy
-    learn(policy_fn, env, seed, total_timesteps=num_timesteps, nprocs=num_cpu)
+    learn(policy_fn, env, seed, total_timesteps=num_timesteps, load_path=load_path, nprocs=num_cpu)
     env.close()
 
 def main():
@@ -30,10 +33,11 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--env', help='environment ID', default='BreakoutNoFrameskip-v4')
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
+    parser.add_argument('--load_path', help='Path to load model from', type=str, default=None)
     parser.add_argument('--million_frames', help='How many frames to train (/ 1e6). '
         'This number gets divided by 4 due to frameskip', type=int, default=40)
-    args = parser.parse_args()    
-    train(args.env, num_frames=1e6 * args.million_frames, seed=args.seed, num_cpu=32)
+    args = parser.parse_args()
+    train(args.env, num_frames=1e6 * args.million_frames, seed=args.seed, load_path=args.load_path, num_cpu=32)
 
 
 if __name__ == '__main__':
