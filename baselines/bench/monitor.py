@@ -28,10 +28,15 @@ class Monitor(Wrapper):
             self.logger = JSONLogger(self.f)
             self.logger.writekvs({"t_start": self.tstart, "gym_version": gym.__version__,
                 "env_id": env.spec.id if env.spec else 'Unknown'})
+            self.sparse = False
+            if 'Sparse' in env.spec.id:
+                self.sparse = True
         self.allow_early_resets = allow_early_resets
         self.rewards = None
         self.needs_reset = True
         self.episode_rewards = []
+        if self.sparse:
+            self.episode_successes = []
         self.episode_lengths = []
         self.total_steps = 0
         self.current_metadata = {} # extra info that gets injected into each log entry
@@ -55,7 +60,7 @@ class Monitor(Wrapper):
             self.f = open(filename, "r+t")
             for _ in range(nlines):
                 self.f.readline()
-            self.f.truncate()        
+            self.f.truncate()
             self.logger = JSONLogger(self.f)
 
 
@@ -75,12 +80,20 @@ class Monitor(Wrapper):
             self.needs_reset = True
             eprew = sum(self.rewards)
             eplen = len(self.rewards)
-            epinfo = {"r": eprew, "l": eplen, "t": round(time.time() - self.tstart, 6)}
+            if self.sparse:
+                epsuc = 0 # episode successful or not
+                if 1 in self.rewards:
+                    epsuc = 1
+                epinfo = {"r": eprew, "s":epsuc, "l": eplen, "t": round(time.time() - self.tstart, 6)}
+            else:
+                epinfo = {"r": eprew, "l": eplen, "t": round(time.time() - self.tstart, 6)}
             epinfo.update(self.current_metadata)
             if self.logger:
                 self.logger.writekvs(epinfo)
             self.episode_rewards.append(eprew)
             self.episode_lengths.append(eplen)
+            if self.sparse:
+                self.episode_successes.append(epsuc)
             info['episode'] = epinfo
         self.total_steps += 1
         return (ob, rew, done, info)
@@ -137,7 +150,7 @@ def load_results(dir, raw_episodes=False):
     for header in headers[1:]:
         assert header['env_id'] == header0['env_id'], "mixing data from two envs"
     episodes = sorted(episodes, key=lambda e: e['abstime'])
-    if raw_episodes: 
+    if raw_episodes:
         return episodes
     else:
         return {

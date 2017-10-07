@@ -50,6 +50,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
 
         agent.reset()
         obs = env.reset()
+        # normalize obs here
         if eval_env is not None:
             eval_obs = eval_env.reset()
         done = False
