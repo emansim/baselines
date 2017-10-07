@@ -605,16 +605,22 @@ def numel(x):
 def intprod(x):
     return int(np.prod(x))
 
-
 def flatgrad(loss, var_list, clip_norm=None):
+    grads = grad(loss, var_list, clip_norm)
+    return flatten(var_list, grads)
+
+def grad(loss, var_list, clip_norm=None):
     grads = tf.gradients(loss, var_list)
     if clip_norm is not None:
         grads = [tf.clip_by_norm(grad, clip_norm=clip_norm) for grad in grads]
+    return grads
+
+# both of them are lists
+def flatten(var_list, grads):
     return tf.concat(axis=0, values=[
         tf.reshape(grad if grad is not None else tf.zeros_like(v), [numel(v)])
         for (v, grad) in zip(var_list, grads)
     ])
-
 
 class SetFromFlat(object):
     def __init__(self, var_list, dtype=tf.float32):

@@ -3,23 +3,21 @@ import time
 from collections import deque
 import pickle
 
-from baselines.ddpg.ddpg import DDPG
-from baselines.ddpg.util import mpi_mean, mpi_std, mpi_max, mpi_sum
+from baselines.retrieval_control.ddpg import DDPG
 import baselines.common.tf_util as U
 
 from baselines import logger
 import numpy as np
 import tensorflow as tf
-from mpi4py import MPI
 
+from util import *
 
 def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, param_noise, actor, critic,
     normalize_returns, normalize_observations, critic_l2_reg, actor_lr, critic_lr, action_noise,
     popart, gamma, clip_norm, nb_train_steps, nb_rollout_steps, nb_eval_steps, batch_size, memory,
     tau=0.01, eval_env=None, param_noise_adaption_interval=50):
-    rank = MPI.COMM_WORLD.Get_rank()
+    rank = 0
 
-    assert (np.abs(env.action_space.low) == env.action_space.high).all()  # we assume symmetric actions.
     max_action = env.action_space.high
     logger.info('scaling actions by {} before executing in env'.format(max_action))
     agent = DDPG(actor, critic, memory, env.observation_space.shape, env.action_space.shape,
@@ -40,6 +38,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
     episode = 0
     eval_episode_rewards_history = deque(maxlen=100)
     episode_rewards_history = deque(maxlen=100)
+
     tf_config = tf.ConfigProto(
         inter_op_parallelism_threads=1,
         intra_op_parallelism_threads=1)
@@ -70,6 +69,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
         epoch_actions = []
         epoch_qs = []
         epoch_episodes = 0
+
         for epoch in range(nb_epochs):
             for cycle in range(nb_epoch_cycles):
                 # Perform rollouts.
@@ -146,35 +146,36 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
             epoch_train_duration = time.time() - epoch_start_time
             duration = time.time() - start_time
             stats = agent.get_stats()
+
             combined_stats = {}
             for key in sorted(stats.keys()):
-                combined_stats[key] = mpi_mean(stats[key])
+                combined_stats[key] = mean(stats[key])
 
             # Rollout statistics.
-            combined_stats['rollout/return'] = mpi_mean(epoch_episode_rewards)
-            combined_stats['rollout/return_history'] = mpi_mean(np.mean(episode_rewards_history))
-            combined_stats['rollout/episode_steps'] = mpi_mean(epoch_episode_steps)
-            combined_stats['rollout/episodes'] = mpi_sum(epoch_episodes)
-            combined_stats['rollout/actions_mean'] = mpi_mean(epoch_actions)
-            combined_stats['rollout/actions_std'] = mpi_std(epoch_actions)
-            combined_stats['rollout/Q_mean'] = mpi_mean(epoch_qs)
+            combined_stats['rollout/return'] = mean(epoch_episode_rewards)
+            combined_stats['rollout/return_history'] = mean(np.mean(episode_rewards_history))
+            combined_stats['rollout/episode_steps'] = mean(epoch_episode_steps)
+            combined_stats['rollout/episodes'] = epoch_episodes
+            combined_stats['rollout/actions_mean'] = mean(epoch_actions)
+            combined_stats['rollout/actions_std'] = std(epoch_actions)
+            combined_stats['rollout/Q_mean'] = mean(epoch_qs)
 
             # Train statistics.
-            combined_stats['train/loss_actor'] = mpi_mean(epoch_actor_losses)
-            combined_stats['train/loss_critic'] = mpi_mean(epoch_critic_losses)
-            combined_stats['train/param_noise_distance'] = mpi_mean(epoch_adaptive_distances)
+            combined_stats['train/loss_actor'] = mean(epoch_actor_losses)
+            combined_stats['train/loss_critic'] = mean(epoch_critic_losses)
+            combined_stats['train/param_noise_distance'] = mean(epoch_adaptive_distances)
 
             # Evaluation statistics.
             if eval_env is not None:
-                combined_stats['eval/return'] = mpi_mean(eval_episode_rewards)
-                combined_stats['eval/return_history'] = mpi_mean(np.mean(eval_episode_rewards_history))
-                combined_stats['eval/Q'] = mpi_mean(eval_qs)
-                combined_stats['eval/episodes'] = mpi_mean(len(eval_episode_rewards))
+                combined_stats['eval/return'] = mean(eval_episode_rewards)
+                combined_stats['eval/return_history'] = mean(np.mean(eval_episode_rewards_history))
+                combined_stats['eval/Q'] = mean(eval_qs)
+                combined_stats['eval/episodes'] = mean(len(eval_episode_rewards))
 
             # Total statistics.
-            combined_stats['total/duration'] = mpi_mean(duration)
-            combined_stats['total/steps_per_second'] = mpi_mean(float(t) / float(duration))
-            combined_stats['total/episodes'] = mpi_mean(episodes)
+            combined_stats['total/duration'] = mean(duration)
+            combined_stats['total/steps_per_second'] = mean(float(t) / float(duration))
+            combined_stats['total/episodes'] = mean(episodes)
             combined_stats['total/epochs'] = epoch + 1
             combined_stats['total/steps'] = t
 
