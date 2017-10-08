@@ -16,20 +16,30 @@ def rollout(env, policy, max_pathlength, animate=False, obfilter=None, save_roll
     Simulate the env and policy for max_pathlength steps
     """
     ob = env.reset()
+    if save_rollouts:
+        fingertip_com = env.env.env.get_body_com("fingertip") # com stands for center of mass
+        target_com = env.env.env.get_body_com("target") # com stands for center of mass
     prev_ob = np.float32(np.zeros(ob.shape))
     if obfilter: ob = obfilter(ob, update=not save_rollouts)
     terminated = False
 
     obs = []
     acs = []
+    scaled_acs = []
     ac_dists = []
     logps = []
     rewards = []
+    if save_rollouts:
+        fingertip_coms = []
+        target_coms = []
     for _ in range(max_pathlength):
         if animate:
             env.render()
         state = np.concatenate([ob, prev_ob], -1)
         obs.append(state)
+        if save_rollouts:
+            fingertip_coms.append(fingertip_com)
+            target_coms.append(target_com)
         ac, ac_dist, logp = policy.act(state)
         acs.append(ac)
         ac_dists.append(ac_dist)
@@ -37,15 +47,28 @@ def rollout(env, policy, max_pathlength, animate=False, obfilter=None, save_roll
         prev_ob = np.copy(ob)
         scaled_ac = env.action_space.low + (ac + 1.) * 0.5 * (env.action_space.high - env.action_space.low)
         scaled_ac = np.clip(scaled_ac, env.action_space.low, env.action_space.high)
+        scaled_acs.append(scaled_ac)
         ob, rew, done, _ = env.step(scaled_ac)
         if obfilter: ob = obfilter(ob)
+        if save_rollouts:
+            fingertip_com = env.env.env.get_body_com("fingertip")
+            target_com = env.env.env.get_body_com("target")
         rewards.append(rew)
         if done:
             terminated = True
             break
-    return {"observation" : np.array(obs), "terminated" : terminated,
-            "reward" : np.array(rewards), "action" : np.array(acs),
-            "action_dist": np.array(ac_dists), "logp" : np.array(logps)}
+    if save_rollouts:
+        return {"observation" : np.array(obs), "terminated" : terminated,
+                "reward" : np.array(rewards), "action" : np.array(acs),
+                "scaled_action": np.array(scaled_acs),
+                "fingertip_com": np.array(fingertip_coms),
+                "target_com": np.array(target_coms),
+                "action_dist": np.array(ac_dists), "logp" : np.array(logps)}
+    else:
+        return {"observation" : np.array(obs), "terminated" : terminated,
+                "reward" : np.array(rewards), "action" : np.array(acs),
+                "scaled_action": np.array(scaled_acs),
+                "action_dist": np.array(ac_dists), "logp" : np.array(logps)}
 
 def save(saver, obfilter, save_path):
     model_path = os.path.join(save_path, "model.ckpt")
@@ -118,7 +141,7 @@ def learn(env, policy, vf, gamma, lam, timesteps_per_batch, num_timesteps,
 
         if save_rollouts:
             # save the rollouts
-            rollouts_path = os.path.join(load_path, "rollouts.pkl")
+            rollouts_path = os.path.join(load_path, "rollouts-v2.pkl")
             with open(rollouts_path, 'wb') as rollouts_output:
                 pickle.dump(paths, rollouts_output, pickle.HIGHEST_PROTOCOL)
             sys.exit()

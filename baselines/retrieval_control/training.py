@@ -10,13 +10,22 @@ from baselines import logger
 import numpy as np
 import tensorflow as tf
 
+from baselines.acktr.filters import ZFilter
+
 from util import *
 
 def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, param_noise, actor, critic,
     normalize_returns, normalize_observations, critic_l2_reg, actor_lr, critic_lr, action_noise,
     popart, gamma, clip_norm, nb_train_steps, nb_rollout_steps, nb_eval_steps, batch_size, memory,
-    tau=0.01, eval_env=None, param_noise_adaption_interval=50):
+    tau=0.01, eval_env=None, obfilter_path=None, load_path=None, param_noise_adaption_interval=50):
     rank = 0
+
+    if normalize_observations:
+        if obfilter_path != None:
+            with open(obfilter_path, 'rb') as obfilter_input:
+                obfilter = pickle.load(obfilter_input)
+        else:
+            obfilter = ZFilter(env.observation_space.shape)
 
     max_action = env.action_space.high
     logger.info('scaling actions by {} before executing in env'.format(max_action))
@@ -28,11 +37,13 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
     logger.info('Using agent with the following configuration:')
     logger.info(str(agent.__dict__.items()))
 
+    """
     # Set up logging stuff only for a single worker.
     if rank == 0:
         saver = tf.train.Saver()
     else:
         saver = None
+    """
 
     step = 0
     episode = 0
@@ -46,10 +57,23 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
     with tf.Session(config=tf_config) as sess:
         # Prepare everything.
         agent.initialize(sess)
+
+        # saver/loader
+        if load_path != None:
+            saver = tf.train.Saver()
+            saver.restore(U.get_session(), os.path.join(load_path, "model.ckpt"))
+            print ("Loaded Model")
+        else:
+            # create saver
+            saver = tf.train.Saver()
+
         sess.graph.finalize()
 
         agent.reset()
         obs = env.reset()
+        # added
+        if normalize_observations:
+            obs = obfilter(obs)
         # normalize obs here
         if eval_env is not None:
             eval_obs = eval_env.reset()
@@ -84,6 +108,8 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                         env.render()
                     assert max_action.shape == action.shape
                     new_obs, r, done, info = env.step(max_action * action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+                    if normalize_observations:
+                        new_obs = obfilter(new_obs)
                     t += 1
                     if rank == 0 and render:
                         env.render()
@@ -132,6 +158,8 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                     for t_rollout in range(nb_eval_steps):
                         eval_action, eval_q = agent.pi(eval_obs, apply_noise=False, compute_Q=True)
                         eval_obs, eval_r, eval_done, eval_info = eval_env.step(max_action * eval_action)  # scale for execution in env (as far as DDPG is concerned, every action is in [-1, 1])
+                        if normalize_observations:
+                            eval_obs = obfilter(eval_obs, update=False)
                         if render_eval:
                             eval_env.render()
                         eval_episode_reward += eval_r
@@ -186,9 +214,21 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
             logger.info('')
             logdir = logger.get_dir()
             if rank == 0 and logdir:
+                # save model
+                model_path = os.path.join(logdir, "model.ckpt")
+                saver.save(U.get_session(), model_path)
+                print ("Model saved to {}".format(model_path))
+                obfilter_path = os.path.join(logdir, "obfilter.pkl")
+                with open(obfilter_path, 'wb') as obfilter_output:
+                    pickle.dump(obfilter, obfilter_output, pickle.HIGHEST_PROTOCOL)
+                print ("Obfilter saved to {}".format(obfilter_path))
+
+            """
+            if rank == 0 and logdir:
                 if hasattr(env, 'get_state'):
                     with open(os.path.join(logdir, 'env_state.pkl'), 'wb') as f:
                         pickle.dump(env.get_state(), f)
                 if eval_env and hasattr(eval_env, 'get_state'):
                     with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
                         pickle.dump(eval_env.get_state(), f)
+            """

@@ -55,7 +55,7 @@ def get_perturbed_actor_updates(actor, perturbed_actor, param_noise_stddev):
 
 class DDPG(object):
     def __init__(self, actor, critic, memory, observation_shape, action_shape, param_noise=None, action_noise=None,
-        gamma=0.99, tau=0.001, normalize_returns=False, enable_popart=False, normalize_observations=True,
+        gamma=0.99, tau=0.001, normalize_returns=False, enable_popart=False, normalize_observations=False,
         batch_size=128, observation_range=(-5., 5.), action_range=(-1., 1.), return_range=(-np.inf, np.inf),
         adaptive_param_noise=True, adaptive_param_noise_policy_threshold=.1,
         critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1.):
@@ -93,11 +93,14 @@ class DDPG(object):
         # Observation normalization.
         # Todo change it
         # Move obfilter into the rollout function ??
+        """
         if self.normalize_observations:
             with tf.variable_scope('obs_rms'):
                 self.obs_rms = RunningMeanStd(shape=observation_shape)
         else:
             self.obs_rms = None
+        """
+        self.obs_rms = None
 
         normalized_obs0 = tf.clip_by_value(normalize(self.obs0, self.obs_rms),
             self.observation_range[0], self.observation_range[1])
@@ -233,9 +236,11 @@ class DDPG(object):
             ops += [self.ret_rms.mean, self.ret_rms.std]
             names += ['ret_rms_mean', 'ret_rms_std']
 
+        """
         if self.normalize_observations:
             ops += [tf.reduce_mean(self.obs_rms.mean), tf.reduce_mean(self.obs_rms.std)]
             names += ['obs_rms_mean', 'obs_rms_std']
+        """
 
         ops += [tf.reduce_mean(self.critic_tf)]
         names += ['reference_Q_mean']
@@ -283,8 +288,10 @@ class DDPG(object):
     def store_transition(self, obs0, action, reward, obs1, terminal1):
         reward *= self.reward_scale
         self.memory.append(obs0, action, reward, obs1, terminal1)
+        """
         if self.normalize_observations:
             self.obs_rms.update(np.array([obs0]))
+        """
 
     def train(self):
         # Get a batch.
