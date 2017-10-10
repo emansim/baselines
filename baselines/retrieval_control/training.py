@@ -21,8 +21,9 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
     rank = 0
 
     if normalize_observations:
-        if obfilter_path != None:
-            with open(obfilter_path, 'rb') as obfilter_input:
+        if obfilter_path != None or load_path != None:
+            path_to_load = obfilter_path or load_path
+            with open(os.path.join(path_to_load, 'best_obfilter.pkl'), 'rb') as obfilter_input:
                 obfilter = pickle.load(obfilter_input)
         else:
             obfilter = ZFilter(env.observation_space.shape)
@@ -61,7 +62,7 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
         # saver/loader
         if load_path != None:
             saver = tf.train.Saver()
-            saver.restore(U.get_session(), os.path.join(load_path, "model.ckpt"))
+            saver.restore(U.get_session(), os.path.join(load_path, "best_model.ckpt"))
             print ("Loaded Model")
         else:
             # create saver
@@ -81,21 +82,22 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
         episode_reward = 0.
         episode_step = 0
         episodes = 0
+        best_epoch_episode_rewards = float("-inf")
         t = 0
 
         epoch = 0
         start_time = time.time()
 
-        epoch_episode_rewards = []
-        epoch_episode_steps = []
-        epoch_episode_eval_rewards = []
-        epoch_episode_eval_steps = []
-        epoch_start_time = time.time()
-        epoch_actions = []
-        epoch_qs = []
-        epoch_episodes = 0
-
         for epoch in range(nb_epochs):
+            epoch_episode_rewards = []
+            epoch_episode_steps = []
+            epoch_episode_eval_rewards = []
+            epoch_episode_eval_steps = []
+            epoch_start_time = time.time()
+            epoch_actions = []
+            epoch_qs = []
+            epoch_episodes = 0
+
             for cycle in range(nb_epoch_cycles):
                 # Perform rollouts.
                 for t_rollout in range(nb_rollout_steps):
@@ -140,10 +142,12 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                 epoch_critic_losses = []
                 epoch_adaptive_distances = []
                 for t_train in range(nb_train_steps):
+                    """
                     # Adapt param noise, if necessary.
                     if memory.nb_entries >= batch_size and t % param_noise_adaption_interval == 0:
                         distance = agent.adapt_param_noise()
                         epoch_adaptive_distances.append(distance)
+                    """
 
                     cl, al = agent.train()
                     epoch_critic_losses.append(cl)
@@ -223,12 +227,13 @@ def train(env, nb_epochs, nb_epoch_cycles, render_eval, reward_scale, render, pa
                     pickle.dump(obfilter, obfilter_output, pickle.HIGHEST_PROTOCOL)
                 print ("Obfilter saved to {}".format(obfilter_path))
 
-            """
-            if rank == 0 and logdir:
-                if hasattr(env, 'get_state'):
-                    with open(os.path.join(logdir, 'env_state.pkl'), 'wb') as f:
-                        pickle.dump(env.get_state(), f)
-                if eval_env and hasattr(eval_env, 'get_state'):
-                    with open(os.path.join(logdir, 'eval_env_state.pkl'), 'wb') as f:
-                        pickle.dump(eval_env.get_state(), f)
-            """
+            if rank == 0 and logdir and mean(epoch_episode_rewards) > best_epoch_episode_rewards:
+                # save best model
+                model_path = os.path.join(logdir, "best_model.ckpt")
+                saver.save(U.get_session(), model_path)
+                print ("Best Model saved to {}".format(model_path))
+                obfilter_path = os.path.join(logdir, "best_obfilter.pkl")
+                with open(obfilter_path, 'wb') as obfilter_output:
+                    pickle.dump(obfilter, obfilter_output, pickle.HIGHEST_PROTOCOL)
+                print ("Best Obfilter saved to {}".format(obfilter_path))
+                best_epoch_episode_rewards = mean(epoch_episode_rewards)

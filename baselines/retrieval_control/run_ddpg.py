@@ -82,10 +82,13 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
     param_noise = None
     nb_actions = env.action_space.shape[-1]
     noise_type = noise_type.strip()
-    assert noise_type == 'none' or 'ou' in noise_type
+    assert noise_type == 'none' or 'ou' in noise_type or 'normal' in noise_type
     if 'ou' in noise_type:
         _, stddev = noise_type.split('_')
         action_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
+    elif 'normal' in noise_type:
+        _, stddev = noise_type.split('_')
+        action_noise = NormalActionNoise(mu=np.zeros(nb_actions), sigma=float(stddev) * np.ones(nb_actions))
     else:
         pass
 

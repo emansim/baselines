@@ -67,7 +67,8 @@ if __name__ == "__main__":
 
         # do the actual rollout
         ob = env.reset()
-        prev_ob = np.float32(np.zeros(ob.shape))
+        prev_ob = np.float32(np.zeros(ob.shape))s
+
         if obfilter: ob = obfilter(ob, update=False)
         rewards = []
         for i in range(max_timesteps):

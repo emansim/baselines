@@ -45,6 +45,8 @@ def train(env_id, num_timesteps, seed):
         osp.join(logger.get_dir(), "monitor.json"))
     env.seed(seed)
     gym.logger.setLevel(logging.WARN)
+
+    """
     pposgd_simple.learn(env, policy_fn,
             max_timesteps=num_timesteps,
             timesteps_per_batch=2048,
@@ -52,6 +54,27 @@ def train(env_id, num_timesteps, seed):
             optim_epochs=10, optim_stepsize=3e-4, optim_batchsize=64,
             gamma=0.99, lam=0.95, schedule='linear',
         )
+    """
+
+    pposgd_simple.learn(env, policy_fn,
+            max_timesteps=num_timesteps,
+            timesteps_per_batch=4096,
+            clip_param=0.2, entcoeff=0.0,
+            optim_epochs=10, optim_stepsize=3e-4, optim_batchsize=512,
+            gamma=0.99, lam=0.95, schedule='adapt', desired_kl=0.02,
+        )
+
+
+    """
+    # specifically for humanoid
+    pposgd_simple.learn(env, policy_fn,
+            max_timesteps=num_timesteps,
+            timesteps_per_batch=512,
+            clip_param=0.2, entcoeff=0.0,
+            optim_epochs=15, optim_stepsize=3e-4, optim_batchsize=4096,
+            gamma=0.99, lam=0.95, schedule='adapt', # add adapt
+        )
+    """
     env.close()
 
 def main():

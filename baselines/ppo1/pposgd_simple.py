@@ -85,7 +85,8 @@ def learn(env, policy_func, *,
         max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
         callback=None, # you can do anything in the callback, since it takes locals(), globals()
         adam_epsilon=1e-5,
-        schedule='constant' # annealing for stepsize parameters (epsilon and adam)
+        schedule='constant', # annealing for stepsize parameters (epsilon and adam)
+        desired_kl=None # desired kl for adjusting ADAM stepsize
         ):
     # Setup losses and stuff
     # ----------------------------------------
@@ -156,6 +157,8 @@ def learn(env, policy_func, *,
             cur_lrmult = 1.0
         elif schedule == 'linear':
             cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
+        elif schedule == 'adapt':
+            cur_lrmult = 1.0
         else:
             raise NotImplementedError
 
@@ -181,7 +184,12 @@ def learn(env, policy_func, *,
             losses = [] # list of tuples, each of which gives the loss for a minibatch
             for batch in d.iterate_once(optim_batchsize):
                 *newlosses, g = lossandgrad(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
-                adam.update(g, optim_stepsize * cur_lrmult) 
+                if desired_kl != None and schedule == 'adapt':
+                    if newlosses[-2] > desired_kl * 2:
+                        optim_stepsize = max(1e-8, optim_stepsize / 1.5)
+                    elif newlosses[-2] < desired_kl / 2:
+                        optim_stepsize = min(1e0, optim_stepsize * 1.5 )
+                adam.update(g, optim_stepsize * cur_lrmult)
                 losses.append(newlosses)
             logger.log(fmt_row(13, np.mean(losses, axis=0)))
 
@@ -189,7 +197,7 @@ def learn(env, policy_func, *,
         losses = []
         for batch in d.iterate_once(optim_batchsize):
             newlosses = compute_losses(batch["ob"], batch["ac"], batch["atarg"], batch["vtarg"], cur_lrmult)
-            losses.append(newlosses)            
+            losses.append(newlosses)
         meanlosses,_,_ = mpi_moments(losses, axis=0)
         logger.log(fmt_row(13, meanlosses))
         for (lossval, name) in zipsame(meanlosses, loss_names):
