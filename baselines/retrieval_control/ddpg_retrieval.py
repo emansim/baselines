@@ -59,13 +59,15 @@ class DDPG(object):
         gamma=0.99, tau=0.001, normalize_returns=False, enable_popart=False, normalize_observations=True,
         batch_size=128, observation_range=(-5., 5.), action_range=(-1., 1.), return_range=(-np.inf, np.inf),
         adaptive_param_noise=True, adaptive_param_noise_policy_threshold=.1,
-        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1.):
+        critic_l2_reg=0., actor_lr=1e-4, critic_lr=1e-3, clip_norm=None, reward_scale=1., retrieved_action_scale=0.99):
         # Inputs.
         self.obs0 = tf.placeholder(tf.float32, shape=(None,) + observation_shape, name='obs0')
         self.obs1 = tf.placeholder(tf.float32, shape=(None,) + observation_shape, name='obs1')
         self.terminals1 = tf.placeholder(tf.float32, shape=(None, 1), name='terminals1')
         self.rewards = tf.placeholder(tf.float32, shape=(None, 1), name='rewards')
         self.actions = tf.placeholder(tf.float32, shape=(None,) + action_shape, name='actions')
+        self.retrieved_actions0 = tf.placeholder(tf.float32, shape=(None,) + action_shape, name='retrieved_actions0')
+        self.retrieved_actions1 = tf.placeholder(tf.float32, shape=(None,) + action_shape, name='retrieved_actions1')
         self.critic_target = tf.placeholder(tf.float32, shape=(None, 1), name='critic_target')
         self.param_noise_stddev = tf.placeholder(tf.float32, shape=(), name='param_noise_stddev')
 
@@ -118,12 +120,12 @@ class DDPG(object):
         self.target_critic = target_critic
 
         # Create networks and core TF parts that are shared across setup parts.
-        self.actor_tf = actor(normalized_obs0)
+        self.actor_tf = actor(normalized_obs0, self.retrieved_actions0, retrieved_action_scale)
         self.normalized_critic_tf = critic(normalized_obs0, self.actions)
         self.critic_tf = denormalize(tf.clip_by_value(self.normalized_critic_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
         self.normalized_critic_with_actor_tf = critic(normalized_obs0, self.actor_tf, reuse=True)
         self.critic_with_actor_tf = denormalize(tf.clip_by_value(self.normalized_critic_with_actor_tf, self.return_range[0], self.return_range[1]), self.ret_rms)
-        Q_obs1 = denormalize(target_critic(normalized_obs1, target_actor(normalized_obs1)), self.ret_rms)
+        Q_obs1 = denormalize(target_critic(normalized_obs1, target_actor(normalized_obs1, self.retrieved_actions1, retrieved_action_scale)), self.ret_rms)
         self.target_Q = self.rewards + (1. - self.terminals1) * gamma * Q_obs1
 
         # Set up parts.
@@ -257,17 +259,20 @@ class DDPG(object):
         self.stats_ops = ops
         self.stats_names = names
 
-    def pi(self, obs, apply_noise=True, compute_Q=True):
+    def pi(self, obs, retrieved_action, apply_noise=True, compute_Q=True):
         if self.param_noise is not None and apply_noise:
             actor_tf = self.perturbed_actor_tf
         else:
             actor_tf = self.actor_tf
-        feed_dict = {self.obs0: [obs]}
+
+        feed_dict = {self.obs0: [obs], self.retrieved_actions0: [retrieved_action]}
         if compute_Q:
             action, q = self.sess.run([actor_tf, self.critic_with_actor_tf], feed_dict=feed_dict)
         else:
             action = self.sess.run(actor_tf, feed_dict=feed_dict)
             q = None
+
+        # before flatten it was dimension 1 x 2
         action = action.flatten()
         if self.action_noise is not None and apply_noise:
             noise = self.action_noise()
@@ -276,13 +281,13 @@ class DDPG(object):
         # add posibility of doing completely random action
         if np.random.uniform() < 0.2 and self.random_actions:
             action = np.random.uniform(low=-1.0, high=1.0, size=action.shape)
-        
+
         action = np.clip(action, self.action_range[0], self.action_range[1])
         return action, q
 
-    def store_transition(self, obs0, action, reward, obs1, terminal1):
+    def store_transition(self, obs0, retrieved_action0, action, reward, obs1, retrieved_action1, terminal1):
         reward *= self.reward_scale
-        self.memory.append(obs0, action, reward, obs1, terminal1)
+        self.memory.append(obs0, retrieved_action0, action, reward, obs1, retrieved_action1, terminal1)
         if self.normalize_observations:
             self.obs_rms.update(self.sess, np.array([obs0]))
 
@@ -293,6 +298,7 @@ class DDPG(object):
         if self.normalize_returns and self.enable_popart:
             old_mean, old_std, target_Q = self.sess.run([self.ret_rms.mean, self.ret_rms.std, self.target_Q], feed_dict={
                 self.obs1: batch['obs1'],
+                self.retrieved_actions1: batch['retrieved_actions1'],
                 self.rewards: batch['rewards'],
                 self.terminals1: batch['terminals1'].astype('float32'),
             })
@@ -314,6 +320,7 @@ class DDPG(object):
         else:
             target_Q = self.sess.run(self.target_Q, feed_dict={
                 self.obs1: batch['obs1'],
+                self.retrieved_actions1: batch['retrieved_actions1'],
                 self.rewards: batch['rewards'],
                 self.terminals1: batch['terminals1'].astype('float32'),
             })
@@ -323,6 +330,7 @@ class DDPG(object):
                 self.actor_update_op, self.critic_update_op]
         actor_grads, actor_loss, critic_grads, critic_loss, _, _ = self.sess.run(ops, feed_dict={
             self.obs0: batch['obs0'],
+            self.retrieved_actions0: batch['retrieved_actions0'],
             self.actions: batch['actions'],
             self.critic_target: target_Q,
         })
@@ -357,6 +365,7 @@ class DDPG(object):
             self.stats_sample = self.memory.sample(batch_size=self.batch_size)
         values = self.sess.run(self.stats_ops, feed_dict={
             self.obs0: self.stats_sample['obs0'],
+            self.retrieved_actions0: self.stats_sample['retrieved_actions0'],
             self.actions: self.stats_sample['actions'],
         })
 

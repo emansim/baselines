@@ -57,6 +57,8 @@ if __name__ == "__main__":
     if 'Sparse' in env.spec.id:
         sparse = True
         episode_successes = []
+    else:
+        sparse = False
 
     fingertip_coms_start, target_coms_start, paths, obfilter = process_rollouts()
     coms_start = np.concatenate([fingertip_coms_start, target_coms_start], axis=1)
@@ -88,6 +90,7 @@ if __name__ == "__main__":
         rewards = []
         # just execute the actions
         for i in range(max_timesteps):
+            env.render()
             if animate:
                 im = env.render('rgb_array')
                 scipy.misc.imsave('images/im_{}.jpg'.format(count), im)

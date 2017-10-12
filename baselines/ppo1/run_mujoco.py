@@ -6,6 +6,8 @@ import argparse
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--env', help='environment ID', default='Humanoid-v1')
 parser.add_argument('--seed', help='RNG seed', type=int, default=0)
+parser.add_argument('--schedule', help='schedule', default='linear')
+
 args = parser.parse_args()
 
 folder_name = os.path.join(os.environ["checkpoint_dir"], "ppo-mpi")
@@ -46,16 +48,15 @@ def train(env_id, num_timesteps, seed):
     env.seed(seed)
     gym.logger.setLevel(logging.WARN)
 
-    """
     pposgd_simple.learn(env, policy_fn,
             max_timesteps=num_timesteps,
             timesteps_per_batch=2048,
             clip_param=0.2, entcoeff=0.0,
             optim_epochs=10, optim_stepsize=3e-4, optim_batchsize=64,
-            gamma=0.99, lam=0.95, schedule='linear',
+            gamma=0.99, lam=0.95, schedule=args.schedule,
         )
-    """
 
+    """
     pposgd_simple.learn(env, policy_fn,
             max_timesteps=num_timesteps,
             timesteps_per_batch=4096,
@@ -63,7 +64,7 @@ def train(env_id, num_timesteps, seed):
             optim_epochs=10, optim_stepsize=3e-4, optim_batchsize=512,
             gamma=0.99, lam=0.95, schedule='adapt', desired_kl=0.02,
         )
-
+    """
 
     """
     # specifically for humanoid
@@ -78,7 +79,7 @@ def train(env_id, num_timesteps, seed):
     env.close()
 
 def main():
-    train(args.env, num_timesteps=100e6, seed=args.seed)
+    train(args.env, num_timesteps=1e6, seed=args.seed)
 
 if __name__ == '__main__':
     main()
