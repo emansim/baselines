@@ -1,4 +1,5 @@
 import os, sys, shutil, argparse
+import random
 sys.path.append(os.getcwd())
 
 from baselines.common.misc_util import boolean_flag
@@ -22,7 +23,7 @@ parser.add_argument('--gamma', type=float, default=0.99)
 parser.add_argument('--reward-scale', type=float, default=1.)
 parser.add_argument('--load-path', type=str, default=None)
 parser.add_argument('--clip-norm', type=float, default=None)
-parser.add_argument('--nb-epochs', type=int, default=500)  # with default settings, perform 1M steps total
+parser.add_argument('--nb-epochs', type=int, default=5000)  # with default settings, perform 1M steps total
 parser.add_argument('--nb-epoch-cycles', type=int, default=20)
 parser.add_argument('--nb-train-steps', type=int, default=50)  # per epoch cycle and MPI worker
 parser.add_argument('--nb-eval-steps', type=int, default=100)  # per epoch cycle and MPI worker
@@ -36,7 +37,7 @@ parser.add_argument('--demon-path', help='path to load trained model from', type
 parser.add_argument('--retrieved-action-scale', type=float, default=0.99)
 
 args = parser.parse_args()
-assert (args.env_id == "Reacher-v1")
+assert (args.env_id == "Reacher-v1" or args.env_id == "SparseReacher-v1")
 
 folder_name = os.path.join(os.environ["checkpoint_dir"], "ddpg-retrieval-gpu")
 try:

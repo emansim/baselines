@@ -1,4 +1,5 @@
 import os, sys, shutil, argparse
+import random
 sys.path.append(os.getcwd())
 
 from baselines.common.misc_util import boolean_flag
@@ -30,10 +31,15 @@ parser.add_argument('--nb-rollout-steps', type=int, default=100)  # per epoch cy
 parser.add_argument('--noise-type', type=str, default='ou_0.2')  # choices are adaptive-param_xx, ou_xx, normal_xx, none
 boolean_flag(parser, 'random-actions', default=False) # randomly sample actions with 20% probability
 boolean_flag(parser, 'evaluation', default=False)
+parser.add_argument('--top-k', help='top k', type=int, default=1)
+parser.add_argument('--num-demon', help='number of demonstrations', type=int, default=0)
+parser.add_argument('--demon-path', help='path to load trained model from', type=str, default="/home/mansimov/logdir/acktr-mujoco/Reacher-v1-seed1/")
+parser.add_argument('--retrieved-action-prob', type=float, default=0.99)
 
 args = parser.parse_args()
+assert (args.env_id == "Reacher-v1" or args.env_id == "SparseReacher-v1")
 
-folder_name = os.path.join(os.environ["checkpoint_dir"], "ddpg-gpu")
+folder_name = os.path.join(os.environ["checkpoint_dir"], "ddpg-nonlearned-retrieval-gpu")
 try:
     os.mkdir(folder_name)
 except:
@@ -53,13 +59,14 @@ from baselines.common.misc_util import (
     set_global_seeds,
     boolean_flag,
 )
-import baselines.retrieval_control.training as training
+import baselines.retrieval_control.training_retrieval_nonlearned as training
 from baselines.retrieval_control.models import Actor, Critic
 from baselines.retrieval_control.memory import Memory
 from baselines.retrieval_control.noise import *
 
 import gym
 import tensorflow as tf
+import pickle
 
 def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
     rank = 0
@@ -105,8 +112,27 @@ def run(env_id, seed, noise_type, layer_norm, evaluation, **kwargs):
     if eval_env is not None:
         eval_env.seed(seed)
 
+    # load demonstrations as a dictionary
+    # with or without timestep ???
+    demon_path = os.path.join(args.demon_path, "rollouts-v2.pkl")
+    with open(demon_path, 'rb') as demon_input:
+        demons = pickle.load(demon_input)
+
+    if args.num_demon > 0:
+        # select certain number of episodes
+        random.shuffle(demons)
+        demons = demons[0:args.num_demon]
+
+    fingertip_coms_start = np.concatenate([np.expand_dims(demon["fingertip_com"][0],0) for demon in demons])
+    target_coms_start = np.concatenate([np.expand_dims(demon["target_com"][0],0) for demon in demons])
+
+    del kwargs["num_demon"]
+    del kwargs["demon_path"]
+
     training.train(env=env, eval_env=eval_env, param_noise=param_noise,
-        action_noise=action_noise, actor=actor, critic=critic, memory=memory, **kwargs)
+        action_noise=action_noise, actor=actor, critic=critic, memory=memory,
+        demons=demons, fingertip_coms_start=fingertip_coms_start,
+        target_coms_start=target_coms_start, **kwargs)
     env.close()
     if eval_env is not None:
         eval_env.close()
