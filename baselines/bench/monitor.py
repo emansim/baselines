@@ -153,10 +153,20 @@ def load_results(dir, raw_episodes=False):
     if raw_episodes:
         return episodes
     else:
-        return {
-            'env_info': {'env_id': header0['env_id'], 'gym_version': header0['gym_version']},
-            'episode_end_times': [e['abstime'] for e in episodes],
-            'episode_lengths': [e['l'] for e in episodes],
-            'episode_rewards': [e['r'] for e in episodes],
-            'initial_reset_time': min([min(header['t_start'] for header in headers)])
-        }
+        if 's' in episodes[0].keys():
+            return {
+                'env_info': {'env_id': header0['env_id'], 'gym_version': header0['gym_version']},
+                'episode_end_times': [e['abstime'] for e in episodes],
+                'episode_lengths': [e['l'] for e in episodes],
+                'episode_rewards': [e['r'] for e in episodes],
+                'episode_successes': [e['s'] for e in episodes],
+                'initial_reset_time': min([min(header['t_start'] for header in headers)])
+            }
+        else:
+            return {
+                'env_info': {'env_id': header0['env_id'], 'gym_version': header0['gym_version']},
+                'episode_end_times': [e['abstime'] for e in episodes],
+                'episode_lengths': [e['l'] for e in episodes],
+                'episode_rewards': [e['r'] for e in episodes],
+                'initial_reset_time': min([min(header['t_start'] for header in headers)])
+            }
