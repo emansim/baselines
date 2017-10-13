@@ -7,6 +7,8 @@ parser = argparse.ArgumentParser(description='Run Mujoco benchmark.')
 parser.add_argument('--seed', help='RNG seed', type=int, default=0)
 parser.add_argument('--top_k', help='top k', type=int, default=1)
 parser.add_argument('--num_demon', help='number of demonstrations', type=int, default=0)
+parser.add_argument('--noise_std', help='scale of noise', type=float, default=0.05)
+
 parser.add_argument('--num_episodes_total', help='number of episodes total', type=int, default=100)
 
 parser.add_argument('--env', help='environment ID', type=str, default="Reacher-v1")
@@ -18,7 +20,6 @@ parser.add_argument('--current_state', action='store_true')
 parser.add_argument('--include_timestep', action='store_true')
 parser.add_argument('--train', action='store_true')
 
-
 args = parser.parse_args()
 
 assert (args.env == "Reacher-v1" or args.env == "SparseReacher-v1")
@@ -27,6 +28,7 @@ import numpy as np
 import pickle
 import gym
 import random
+random.seed(args.seed)
 
 import scipy
 import scipy.misc
@@ -86,6 +88,7 @@ def get_action_current_state(env, t, coms, scaled_actions):
 
 if __name__ == "__main__":
     env = gym.make(args.env)
+    env.seed(args.seed)
     max_timesteps = env.spec.timestep_limit
 
     episode_rewards = []
@@ -110,20 +113,29 @@ if __name__ == "__main__":
     for _ in range(args.num_episodes_total):
         # reset the episode
         ob = env.reset()
+        episode_com_start = None
+        episode_actions = []
+        episode_coms = []
 
         # if only based on the start_state
         if args.start_state:
             fingertip_com, target_com = get_com(env)
+            episode_com_start = np.concatenate([np.expand_dims(fingertip_com, 0),\
+                                np.expand_dims(target_com, 0)], axis=1)
+            episode_coms.append(episode_com_start[0])
+
             ########################################
             fingertip_com = np.repeat(np.expand_dims(fingertip_com, axis=0), coms_start.shape[0], axis=0)
             target_com = np.repeat(np.expand_dims(target_com, axis=0), coms_start.shape[0], axis=0)
             com_current = np.concatenate([fingertip_com, target_com], axis=1)
+
             ###### get top ind
             dist = np.sqrt(np.sum((com_current-coms_start)**2, axis=1))
             argsort_ind = np.argsort(dist)
             top_ind = argsort_ind[:args.top_k]
             ###### get actions
             actions = np.zeros((max_timesteps, env.action_space.shape[0]))
+            #print (top_ind, len(paths))
             for ind in top_ind:
                 path = paths[ind]
                 actions += path["scaled_action"]
@@ -135,12 +147,22 @@ if __name__ == "__main__":
 
         ######## rollout the episode
         rewards = []
+
         # just execute the actions
         for i in range(max_timesteps):
             # if based on the current state
             if args.start_state:
                 action = actions[i]
+            if args.train:
+                # add small random noise
+                action += np.random.normal([0]*env.action_space.shape[0], [args.noise_std]*env.action_space.shape[0])
             _, rew, done, _ = env.step(action)
+            ####append
+            episode_actions.append(action)
+            fingertip_com, target_com = get_com(env)
+            episode_com = np.concatenate([np.expand_dims(fingertip_com, 0),\
+                                np.expand_dims(target_com, 0)], axis=1)
+            episode_coms.append(episode_com[0])
             rewards.append(rew)
             if done:
                 terminated = True
@@ -149,13 +171,26 @@ if __name__ == "__main__":
             if args.current_state:
                 action = get_action_current_state(env, i+1, coms, scaled_actions)
 
-            ### if successful record fingertip_coms_start and target_coms_start and actions
-
         ###### get stats update better way using bench monitor
         episode_rewards.append(np.sum(rewards))
+
         if sparse and 1 in rewards:
             episode_successes.append(1)
 
+            # if train add as sucessful
+            if args.train and args.start_state:
+                # max 1000 demonstrations
+                if coms_start.shape[0] < 1000:
+                    # add to coms_start and add to paths
+                    coms_start = np.append(coms_start, episode_com_start, axis=0)
+                    # add scaled actions to dictionary
+                    paths.append({"scaled_action": np.asarray(episode_actions)})
+            if args.train and args.current_state:
+                if coms.shape[0] // max_timesteps < 1000:
+                    coms = np.append(coms, np.asarray(episode_coms), axis=0)
+                    scaled_actions = np.append(scaled_actions, np.asarray(episode_actions), axis=0)
+
+
     print ("Total episodes {} ; Average episode reward {} ".format(args.num_episodes_total, np.mean(np.asarray(episode_rewards))))
     if sparse:
-        print ("Total episodes {} ; Average success percent {} ".format(args.num_episodes_total, float(sum(episode_successes)) / float(num_episodes_total) * 100))
+        print ("Total episodes {} ; Average success percent {} ".format(args.num_episodes_total, float(sum(episode_successes)) / float(args.num_episodes_total) * 100))
