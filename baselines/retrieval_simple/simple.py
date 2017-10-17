@@ -21,8 +21,13 @@ parser.add_argument('--current_state', action='store_true')
 parser.add_argument('--train', action='store_true')
 parser.add_argument('--max_demon', help='max number of demonstrations if train', type=int, default=1000) # -1 means all of them
 
+parser.add_argument('--animate', action='store_true')
+
 args = parser.parse_args()
-assert (args.env == "Reacher-v1" or args.env == "SparseReacher-v1")
+assert ("reacher" in args.env.lower() or "jaco" in args.env.lower())
+
+if "jaco" in args.env.lower():
+    args.load_path = "/home/mansimov/logdir/acktr-mujoco/Jaco150-v1-seed1"
 
 folder_name = os.path.join(os.environ["checkpoint_dir"], "retrieval-simple")
 try:
@@ -52,7 +57,6 @@ from sklearn.neighbors import NearestNeighbors
 from collections import deque
 
 def process_rollouts(max_timesteps):
-
     rollouts_path = os.path.join(args.load_path, "rollouts-v2.pkl")
     with open(rollouts_path, 'rb') as rollouts_input:
         paths = pickle.load(rollouts_input)
@@ -67,11 +71,14 @@ def process_rollouts(max_timesteps):
     return robot_state_start, goal_state_start, paths
 
 def get_state(env):
-    fingertip_pos = env.env.env.get_body_com("fingertip")
+    if "reacher" in args.env.lower():
+        fingertip_pos = env.env.env.get_body_com("fingertip")
+    elif "jaco" in args.env.lower():
+        fingertip_pos = env.env.env.get_body_com("jaco_link_hand")
     target_pos = env.env.env.get_body_com("target")
     return fingertip_pos, target_pos
 
-def rollout(env, neigh, paths, is_eval):
+def rollout(env, neigh, paths, is_eval, render=False):
     env.reset()
 
     episode_states, episode_actions, episode_rewards = [], [], []
@@ -92,6 +99,7 @@ def rollout(env, neigh, paths, is_eval):
     else:
         actions = np.random.uniform(low=env.action_space.low, \
                 high=env.action_space.high, size=(max_timesteps, env.action_space.shape[0]))
+        #actions *= args.noise_std
 
     # if is_eval is False and args.train add some random noise to action
     if is_eval == False and args.train:
@@ -104,6 +112,8 @@ def rollout(env, neigh, paths, is_eval):
     # rollout
     for i in range(max_timesteps):
         action = actions[i]
+        if render:
+            env.render()
         _, reward, done, _ = env.step(action)
         episode_actions.append(action)
         episode_rewards.append(reward)
@@ -150,7 +160,7 @@ if __name__ == "__main__":
 
     for t in range(args.num_episodes_train):
         episode_rewards, episode_actions, robot_state_current, goal_state_current \
-            = rollout(train_env, neigh, paths, is_eval=False)
+            = rollout(train_env, neigh, paths, is_eval=False, render=False)
 
         all_episode_rewards_train.append(sum(episode_rewards))
         if sparse and 1 in episode_rewards:
@@ -171,20 +181,31 @@ if __name__ == "__main__":
                 neigh.fit(state_start)
 
                 assert (state_start.shape[0] == len(paths))
+        if sparse and 1 not in episode_rewards:
+            all_episode_successes_train.append(0)
 
         # add evaluation
         if t % args.eval_after == 0:
             for _ in range(args.num_episodes_eval):
                 episode_rewards, _, _, _ = rollout(eval_env, neigh, paths, is_eval=True)
                 all_episode_rewards_eval.append(sum(episode_rewards))
-                if sparse and 1 in episode_rewards:
-                    all_episode_successes_eval.append(1)
+                if sparse:
+                    if 1 in episode_rewards:
+                        all_episode_successes_eval.append(1)
+                    else:
+                        all_episode_successes_eval.append(0)
+
+
+    # animate at the end of training if requested
+    if args.animate:
+        for _ in range(args.num_episodes_eval):
+            rollout(eval_env, neigh, paths, is_eval=True, render=True)
+
 
     print ("Total TRAIN episodes {} ; Average episode reward {} ".format(args.num_episodes_train, np.mean(np.asarray(all_episode_rewards_train))))
     if sparse:
-        print ("Total TRAIN episodes {} ; Average success percent {} ".format(args.num_episodes_train, float(sum(all_episode_successes_train)) / float(args.num_episodes_train) * 100))
-
+        print ("Total TRAIN episodes {} ; Average success percent {} ".format(args.num_episodes_train, np.mean(np.asarray(all_episode_successes_train)) * 100))
 
     print ("Total EVAL episodes {} ; Average episode reward {} ".format(args.num_episodes_eval, np.mean(np.asarray(all_episode_rewards_eval))))
     if sparse:
-        print ("Total EVAL episodes {} ; Average success percent {} ".format(args.num_episodes_eval, float(sum(all_episode_successes_eval)) / float(args.num_episodes_eval) * 100))
+        print ("Total EVAL episodes {} ; Average success percent {} ".format(args.num_episodes_eval, np.mean(np.asarray(all_episode_successes_eval)) * 100))
