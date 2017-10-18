@@ -66,14 +66,14 @@ if __name__ == "__main__":
     result = load_one_result(os.path.join(file_path, 'train.monitor.json'))
     result = result['episode_successes']
 
-    print (np.mean(result[0:100]))
-    sys.exit()
     x, y = smooth_reward_curve(np.arange(0,len(result)), result)
-    x, y = fix_point(x, y, 10)
+    x, y = fix_point(x, y, 100)
 
     plt.plot(x, y, label="hello", color=color_defaults[0])
 
-    plt.title("sparse-jaco")
+    plt.title("3D Jaco Arm Reaching (0 initial demonstrations)")
+    plt.ylabel("Success Rate")
+    plt.xlabel("Number of episodes")
     plt.legend(loc=4)
     plt.show()
     plt.draw()

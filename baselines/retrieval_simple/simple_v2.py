@@ -1,3 +1,7 @@
+#### KEY IDEAS
+### ANNEAL NOISE DOWN WHEN EXPLORING
+### ADD unsuccessful trials instead of successful ones
+
 #!/usr/bin/env python
 import os, sys, shutil, argparse
 sys.path.append(os.getcwd())
@@ -89,24 +93,7 @@ def rollout(env, neigh, paths, is_eval, render=False):
                             goal_state_current], axis=1)
     episode_states.append(episode_state)
 
-    '''
-    if neigh != None:
-        top_ind = neigh.kneighbors(episode_state, args.top_k, return_distance=False)
-        actions = np.zeros((max_timesteps, env.action_space.shape[0]))
-        for ind in top_ind[0]:
-            path = paths[ind]
-            actions += path["scaled_action"]
-        actions /= args.top_k
-    else:
-        actions = np.random.uniform(low=env.action_space.low, \
-                high=env.action_space.high, size=(max_timesteps, env.action_space.shape[0]))
-        #actions *= args.noise_std
-
-    # if is_eval is False and args.train add some random noise to action
-    if is_eval == False and args.train:
-        actions += \
-            np.random.normal(np.ones(actions.shape)*0.0, np.ones(actions.shape)*args.noise_std)
-    '''
+    max_timesteps = env.spec.timestep_limit
 
     if neigh != None:
         top_ind = neigh.kneighbors(episode_state, args.top_k, return_distance=False)
@@ -191,9 +178,15 @@ if __name__ == "__main__":
         if sparse and 1 in episode_rewards:
             print ("success {}".format(t))
             all_episode_successes_train.append(1)
+
+        #### add unsuccessful ones to NearestNeighbors
+        if sparse and 1 not in episode_rewards:
+            all_episode_successes_train.append(0)
+
             # add to training set
             if args.train and (paths == None or len(paths) < args.max_demon):
-                print ("new demon")
+                print ("new unsuccessful demons")
+                #### generate one demon for now
                 if neigh != None:
                     state_start = np.append(state_start, \
                         np.concatenate([robot_state_current, goal_state_current], axis=1), axis=0)
@@ -207,8 +200,6 @@ if __name__ == "__main__":
                 neigh.fit(state_start)
 
                 assert (state_start.shape[0] == len(paths))
-        if sparse and 1 not in episode_rewards:
-            all_episode_successes_train.append(0)
 
         # add evaluation
         if t % args.eval_after == 0:
