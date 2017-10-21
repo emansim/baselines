@@ -66,7 +66,8 @@ def visualize(dir, seeds, name, color, lines):
     for seed in seeds:
         thedir = "{}-seed{}".format(dir, seed)
         results = load_results(thedir)
-        episode_rewards.append(results["episode_rewards"])
+        #episode_rewards.append(results["episode_rewards"])
+        episode_rewards.append(results["episode_successes"])
 
     xs, ys = [], []
     for i in range(len(episode_rewards)):
@@ -97,7 +98,7 @@ def visualize(dir, seeds, name, color, lines):
     return lines
 
 if __name__ == "__main__":
-    logdir = "/home/mansimov/logdir/ddpg-gpu/Reacher-v1"
+    logdir = "/home/mansimov/logdir/ddpg-gpu/SparseReacher-v1"
     lines = []
 
     seeds = [1,2]
@@ -120,7 +121,8 @@ if __name__ == "__main__":
     name = "normal_0.1_random"
     visualize(logdir, seeds, name, color, lines)
 
-    plt.ylim(-20,0)
+    #plt.ylim(-20,0)
+    plt.ylim(0,1)
 
     plt.title("Reacher-ddpg")
     plt.legend(loc=4)

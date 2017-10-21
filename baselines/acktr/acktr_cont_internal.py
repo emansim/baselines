@@ -16,8 +16,17 @@ def rollout(env, policy, max_pathlength, animate=False, obfilter=None, save_roll
     Simulate the env and policy for max_pathlength steps
     """
     ob = env.reset()
+    env_id = env.spec.id.lower()
+    if "reacher" in env_id:
+        state_name = "fingertip"
+    elif "jaco" in env_id:
+        state_name = "jaco_link_hand"
+    else:
+        print ("something wrong")
+        sys.exit()
+
     if save_rollouts:
-        fingertip_com = env.env.env.get_body_com("fingertip") # com stands for center of mass
+        fingertip_com = env.env.env.get_body_com(state_name)
         target_com = env.env.env.get_body_com("target") # com stands for center of mass
     prev_ob = np.float32(np.zeros(ob.shape))
     if obfilter: ob = obfilter(ob, update=not save_rollouts)
@@ -51,10 +60,11 @@ def rollout(env, policy, max_pathlength, animate=False, obfilter=None, save_roll
         ob, rew, done, _ = env.step(scaled_ac)
         if obfilter: ob = obfilter(ob)
         if save_rollouts:
-            fingertip_com = env.env.env.get_body_com("fingertip")
+            fingertip_com = env.env.env.get_body_com(state_name)
             target_com = env.env.env.get_body_com("target")
         rewards.append(rew)
         if done:
+            print ("------------------")
             terminated = True
             break
     if save_rollouts:
@@ -130,8 +140,15 @@ def learn(env, policy, vf, gamma, lam, timesteps_per_batch, num_timesteps,
         paths = []
         while True:
             #path = rollout(env, policy, max_pathlength, animate=(len(paths)==0 and (i % 10 == 0) and animate), obfilter=obfilter)
-            path = rollout(env, policy, max_pathlength, animate=animate, obfilter=obfilter, save_rollouts=save_rollouts)
-            paths.append(path)
+            if "jaco" in env.spec.id.lower():
+                path = rollout(env, policy, max_pathlength, animate=animate, obfilter=obfilter, save_rollouts=save_rollouts)
+                goal_dist = np.linalg.norm(env.env.env.get_body_com("jaco_link_hand") \
+                            - env.env.env.get_body_com("target"))
+                if goal_dist <= 0.12:
+                    print ("goal_dist {} ; episode added".format(goal_dist))
+                    paths.append(path)
+            else:
+                path = rollout(env, policy, max_pathlength, animate=animate, obfilter=obfilter, save_rollouts=save_rollouts)
 
             n = pathlength(path)
             timesteps_this_batch += n

@@ -62,10 +62,21 @@ def fix_point(x, y, interval):
     return fx, fy
 
 if __name__ == "__main__":
-    file_path = "/home/mansimov/logdir/retrieval-simple/SparseJaco150-v1-seed0/"
-    result = load_one_result(os.path.join(file_path, 'train.monitor.json'))
+    file_path = "/home/mansimov/logdir/retrieval-simple/SparseJaco150-v1-seed1/"
+    result = load_one_result(os.path.join(file_path, 'eval.monitor.json'))
     result = result['episode_successes']
 
+    result = np.asarray(result)
+    window = 100
+    max_result = -1
+    for i in range(0, result.shape[0], window):
+        subresult = result[i:i+window]
+        if np.mean(subresult) > max_result:
+            max_result = np.mean(subresult)
+    print (max_result)
+    #for i in range(0, result.shape[0], )
+
+    '''
     x, y = smooth_reward_curve(np.arange(0,len(result)), result)
     x, y = fix_point(x, y, 100)
 
@@ -78,3 +89,4 @@ if __name__ == "__main__":
     plt.show()
     plt.draw()
     plt.savefig('sparse-jaco.png')
+    '''

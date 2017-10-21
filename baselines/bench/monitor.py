@@ -130,6 +130,47 @@ class LoadMonitorResultsError(Exception):
 def get_monitor_files(dir):
     return glob(path.join(dir, "*" + Monitor.EXT))
 
+
+def load_one_result(fname, raw_episodes=False):
+    episodes = []
+    headers = []
+    fnames = [fname]
+    for fname in fnames:
+        with open(fname, 'rt') as fh:
+            lines = fh.readlines()
+        header = json.loads(lines[0])
+        headers.append(header)
+        for line in lines[1:]:
+            episode = json.loads(line)
+            episode['abstime'] = header['t_start'] + episode['t']
+            del episode['t']
+            episodes.append(episode)
+    header0 = headers[0]
+    for header in headers[1:]:
+        assert header['env_id'] == header0['env_id'], "mixing data from two envs"
+    episodes = sorted(episodes, key=lambda e: e['abstime'])
+    if raw_episodes:
+        return episodes
+    else:
+        if 's' in episodes[0].keys():
+            return {
+                'env_info': {'env_id': header0['env_id'], 'gym_version': header0['gym_version']},
+                'episode_end_times': [e['abstime'] for e in episodes],
+                'episode_lengths': [e['l'] for e in episodes],
+                'episode_rewards': [e['r'] for e in episodes],
+                'episode_successes': [e['s'] for e in episodes],
+                'initial_reset_time': min([min(header['t_start'] for header in headers)])
+            }
+        else:
+            return {
+                'env_info': {'env_id': header0['env_id'], 'gym_version': header0['gym_version']},
+                'episode_end_times': [e['abstime'] for e in episodes],
+                'episode_lengths': [e['l'] for e in episodes],
+                'episode_rewards': [e['r'] for e in episodes],
+                'initial_reset_time': min([min(header['t_start'] for header in headers)])
+            }
+
+
 def load_results(dir, raw_episodes=False):
     fnames = get_monitor_files(dir)
     if not fnames:

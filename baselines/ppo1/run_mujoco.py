@@ -7,10 +7,16 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument('--env', help='environment ID', default='Humanoid-v1')
 parser.add_argument('--seed', help='RNG seed', type=int, default=0)
 parser.add_argument('--schedule', help='schedule', default='linear')
+parser.add_argument('--million_timesteps', help='Million timestep', type=int, default=100)
+parser.add_argument('--timesteps_per_batch', help='Timesteps per batch', type=int, default=2048)
+parser.add_argument('--optim_epochs', help='Optim epochs', type=int, default=10)
+parser.add_argument('--optim_batchsize', help='Optim epochs', type=int, default=64)
+parser.add_argument('--desired_kl', help='Desired KL', type=float, default=0.02)
+
 
 args = parser.parse_args()
 
-folder_name = os.path.join(os.environ["checkpoint_dir"], "ppo-mpi")
+folder_name = os.path.join(os.environ["checkpoint_dir"], "ppo")
 try:
     os.mkdir(folder_name)
 except:
@@ -50,10 +56,10 @@ def train(env_id, num_timesteps, seed):
 
     pposgd_simple.learn(env, policy_fn,
             max_timesteps=num_timesteps,
-            timesteps_per_batch=2048,
+            timesteps_per_batch=args.timesteps_per_batch,
             clip_param=0.2, entcoeff=0.0,
-            optim_epochs=10, optim_stepsize=3e-4, optim_batchsize=64,
-            gamma=0.99, lam=0.95, schedule=args.schedule,
+            optim_epochs=args.optim_epochs, optim_stepsize=3e-4, optim_batchsize=args.optim_batchsize,
+            gamma=0.99, lam=0.95, schedule=args.schedule, desired_kl=0.02,
         )
 
     """

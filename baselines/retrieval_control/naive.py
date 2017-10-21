@@ -89,6 +89,8 @@ def get_action_current_state(env, t, coms, scaled_actions):
 if __name__ == "__main__":
     env = gym.make(args.env)
     env.seed(args.seed)
+    eval_env = gym.make(args.env)
+    eval_env.seed(args.seed)
     max_timesteps = env.spec.timestep_limit
 
     episode_rewards = []
@@ -176,7 +178,6 @@ if __name__ == "__main__":
 
         if sparse and 1 in rewards:
             episode_successes.append(1)
-
             # if train add as sucessful
             if args.train and args.start_state:
                 # max 1000 demonstrations

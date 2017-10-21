@@ -33,7 +33,7 @@ assert ("reacher" in args.env.lower() or "jaco" in args.env.lower())
 if "jaco" in args.env.lower():
     args.load_path = "/home/mansimov/logdir/acktr-mujoco/Jaco150-v1-seed1"
 
-folder_name = os.path.join(os.environ["checkpoint_dir"], "retrieval-simple")
+folder_name = os.path.join(os.environ["checkpoint_dir"], "retrieval-simple-v2")
 try:
     os.mkdir(folder_name)
 except:

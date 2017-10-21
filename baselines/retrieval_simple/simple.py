@@ -47,7 +47,7 @@ import gym
 from baselines import logger
 from baselines import bench
 import random
-#random.seed(args.seed)
+random.seed(args.seed)
 
 import scipy
 import scipy.misc
@@ -151,12 +151,12 @@ def rollout(env, neigh, paths, is_eval, render=False):
 if __name__ == "__main__":
     # Create train env and eval_env
     train_env = gym.make(args.env)
-    #train_env.seed(args.seed)
+    train_env.seed(args.seed)
     if logger.get_dir():
         train_env = bench.Monitor(train_env, os.path.join(logger.get_dir(), "train.monitor.json"))
 
     eval_env = gym.make(args.env)
-    #eval_env.seed(args.seed+100)
+    eval_env.seed(args.seed+100)
     if logger.get_dir():
         eval_env = bench.Monitor(eval_env, os.path.join(logger.get_dir(), "eval.monitor.json"))
 
